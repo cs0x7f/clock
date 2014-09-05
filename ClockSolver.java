@@ -2,10 +2,10 @@ package cs.clock;
 import java.util.Random;
 
 /**
- *   0 1 2    -2  9 -0
- *   3 4 5    10 11 12
- *   6 7 8    -8 13 -6
- *  (front)    (back)
+ *   0 1 2	-2  9 -0
+ *   3 4 5	10 11 12
+ *   6 7 8	-8 13 -6
+ *  (front)	(back)
  */
 public class ClockSolver {
 	private static final int N_MOVES = 18;
@@ -50,9 +50,29 @@ public class ClockSolver {
 	}
 
 	/*
-	 *	The bit map to filt linearly dependent combinations of moves.
+	 *	The bit map to filter linearly dependent combinations of moves.
+	 *	The i-th bit denotes whether the i-th move is in the combinations.
 	 */
-	static int[] ld_list = {7695, 42588, 47187, 85158, 86697, 156568, 181700, 209201, 231778};
+	static int[] ld_list = {
+		// Combinations of 8 moves
+		7695,   //000001111000001111
+		42588,  //001010011001011100
+		47187,  //001011100001010011
+		85158,  //010100110010100110
+		86697,  //010101001010101001
+		156568, //100110001110011000
+		181700, //101100010111000100
+		209201, //110011000100110001
+		231778, //111000100101100010
+
+		// Combinations of 12 moves
+		125690, //011110101011111010
+		128245, //011111010011110101
+		163223, //100111110110010111
+		187339, //101101101111001011
+		208702, //110010111100111110
+		235373  //111001011101101101
+	};
 
 	/*
 	 *	The inverse table of the ring Z/Z12. If the value is -1, the element is not inversable.
@@ -89,26 +109,32 @@ public class ClockSolver {
 			int nz = enumAllComb(N_HANDS, arr, solution);
 			mvsum += nz;
 
-			//check isSolved
-			int[] clk = new int[N_HANDS];
-			for (int i=0; i<N_MOVES; i++) {
-				if (solution[i] == 0) {
-					continue;
-				}
-				for (int j=0; j<N_HANDS; j++) {
-					clk[j] += solution[i] * moveArr[i][j];
-				}
-			}
-			for (int i=0; i<N_HANDS; i++) {
-				if (clk[i] % 12 != arr[i]) {
-					System.out.println("ERROR");
-				}
+			if (!checkSolution(arr, solution)) {
+				System.out.println("ERROR");
 			}
 
 			System.out.print(String.format("%3f", (System.nanoTime() - start) / 1e6 / (n_solves+1)) + "\t\t\t" + mvsum / 1.0 / (n_solves + 1) + "\r");
 		}
 		System.out.println((System.nanoTime() - start) / 1e6 / 100);
 		System.out.println(mvsum / 1e2);
+	}
+
+	public static boolean checkSolution(int[] hands, int[] solution) {
+		int[] clk = new int[N_HANDS];
+		for (int i=0; i<N_MOVES; i++) {
+			if (solution[i] == 0) {
+				continue;
+			}
+			for (int j=0; j<N_HANDS; j++) {
+				clk[j] += solution[i] * moveArr[i][j];
+			}
+		}
+		for (int i=0; i<N_HANDS; i++) {
+			if (clk[i] % 12 != hands[i]) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public static int[] randomState(java.util.Random r) {
@@ -122,6 +148,8 @@ public class ClockSolver {
 	/**
 	 *	@param hands
 	 *		The 14 hands of the clock. See the comment of the class.
+	 *	@param solution
+	 *		The solution of the clock is written in the array. The value is NOT the moves which solve the state, but the moves which generate the state.
 	 *	@return the length of the solution (the number of non-zero elements in the solution array)
 	 *		-1: invalid input
 	 */
@@ -130,11 +158,14 @@ public class ClockSolver {
 			return -1;
 		}
 		int ret = enumAllComb(N_HANDS, hands, solution);
+		if (!checkSolution(hands, solution)) {
+			assert(false);
+		}
 		return ret;
 	}
 
 	/**
-	 *	Enumerate all k combinations from all 18 possible moves. 
+	 *	Enumerate all k combinations from all 18 possible moves.
 	 *	For each linearly independent combination, use Gaussian Elimination to solve the clock
 	 *	@param k
 	 *		The number of moves, if k > 14, the selected k moves are always linearly dependent.
@@ -142,7 +173,7 @@ public class ClockSolver {
 	 *		The 14 hands of the clock. See the comment of the class.
 	 *	@param solution
 	 *		The shortest solution is stored in this parameter.
-	 *	@return the length of the shortest solution, which is equal to the number of non-zero element in the solution array. 
+	 *	@return the length of the shortest solution, which is equal to the number of non-zero element in the solution array.
 	 *		-1: the clock cannot be solved in k moves.
 	 */
 	static int enumAllComb(int k, int[] hands, int[] solution) {
@@ -151,6 +182,7 @@ public class ClockSolver {
 
 		for (int idx=0; idx<Cnk[n][k]; idx++) {
 			int val = select(n, k, idx);
+			//All of linearly dependent combinations are filtered if k <= 14. Otherwise, k moves are always linearly dependent.
 			boolean isLD = false;
 			for (int r: ld_list) {
 				if ((val & r) == r) {
@@ -176,7 +208,10 @@ public class ClockSolver {
 				arr[i][k] = hands[i];
 			}
 			int ret = gaussianElimination(arr);
+
+			//We have filtered all linearly dependent combinations. However, if more moves are added into the move set, the ld_list should be re-generated.
 			if (ret != 0) {
+				assert(false);
 				continue;
 			}
 
@@ -221,7 +256,7 @@ public class ClockSolver {
 		int n = arr[0].length;
 		for (int i=0; i<n-1; i++) {
 
-			//If arr[i][i] is not inversable, select or generate an inversable element in i-th column, and swap it to the i-th row.
+			//If arr[i][i] is not invertible, select or generate an invertible element in i-th column, and swap it to the i-th row.
 			if (inv[arr[i][i]] == -1) {
 				int ivtidx = -1;
 
@@ -232,9 +267,8 @@ public class ClockSolver {
 					}
 				}
 				if (ivtidx == -1) {
-					//If all elements in i-th column is inversable, we will try to find two elements x, y.
-					//If the ideal generated by {x, y} == Z/Z12, then we can generate an inversable element in i-th column.
-					//Luckly, in Z/Z12, the ideal generated by two inversable element {x, y} == Z/Z12 is equivalent to the inversablility of x+y.
+					//If all elements in i-th column are invertible, we will try to find two elements x, y such that the ideal generated by {x, y} == Z/Z12, then we can generate an inversable element in i-th column.
+					//Luckily, in Z/Z12, the ideal generated by two invertible element {x, y} == Z/Z12 is equivalent to the invertiblility of x+y.
 					OUT:
 					for (int j1=i; j1<m-1; j1++) {
 						for (int j2=j1+1; j2<m; j2++) {
